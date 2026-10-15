@@ -123,7 +123,7 @@
 <script>
 const $ = (s) => document.querySelector(s);
 const audio = $('#audio');
-let role = null, tracks = [], filter = 'all', query = '', playingId = null, editingId = null;
+let directUpload = false, role = null, tracks = [], filter = 'all', query = '', playingId = null, editingId = null;
 
 async function api(url, opts = {}) {
   const r = await fetch(url, { credentials:'same-origin', ...opts,
@@ -226,8 +226,18 @@ async function uploadFiles(files) {
   let done = 0;
   for (const f of files) {
     $('#uploadStatus').textContent = `Uploading ${++done}/${files.length}: ${f.name}`;
-    const fd = new FormData(); fd.append('files', f);
-    try { const added = await api('/api/tracks', { method:'POST', body:fd }); tracks.unshift(...added); render(); }
+    try {
+      if (directUpload) {
+        const { upload } = await import('https://esm.sh/@vercel/blob@2.8.2/client');
+        const safe = f.name.replace(/[^\w.\- ]+/g, '_');
+        const blob = await upload('music/' + safe, f, { access:'public', handleUploadUrl:'/api/blob-upload', multipart: f.size > 20e6 });
+        tracks.unshift(await api('/api/tracks/register', { method:'POST', body:{ url: blob.url, filename: f.name, size: f.size } }));
+      } else {
+        const fd = new FormData(); fd.append('files', f);
+        tracks.unshift(...await api('/api/tracks', { method:'POST', body:fd }));
+      }
+      render();
+    }
     catch (err) { alert(`${f.name}: ${err.message}`); }
   }
   $('#uploadStatus').textContent = `Done — ${files.length} file(s) processed.`;
@@ -263,7 +273,7 @@ $('#seek').addEventListener('change', (e) => { audio.currentTime = (e.target.val
 
 (async () => {
   const me = await api('/api/me').catch(() => ({ role:'client' }));
-  role = me.role; showApp();
+  role = me.role; directUpload = !!(await api('/api/config').catch(() => ({}))).directUpload; showApp();
 })();
 </script>
 </body>

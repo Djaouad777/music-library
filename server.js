@@ -16,10 +16,7 @@ try {
 const PORT = process.env.PORT || 3000;
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'admin';
 const SECRET = process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex');
-const SB_URL = (process.env.SUPABASE_URL || '').replace(/\/$/, '');
-const SB_KEY = process.env.SUPABASE_SERVICE_KEY || '';
-const SB_BUCKET = process.env.SUPABASE_BUCKET || 'music';
-const USE_SUPABASE = !!(SB_URL && SB_KEY);
+const USE_BLOB = !!process.env.BLOB_READ_WRITE_TOKEN;
 
 if (!process.env.ADMIN_PASSWORD) console.warn('WARNING: ADMIN_PASSWORD not set, using default "admin".');
 
@@ -27,45 +24,27 @@ if (!process.env.ADMIN_PASSWORD) console.warn('WARNING: ADMIN_PASSWORD not set, 
 const DATA_DIR = path.join(__dirname, 'data');
 const FILES_DIR = path.join(DATA_DIR, 'files');
 
-const sbHeaders = (extra = {}) => ({ Authorization: `Bearer ${SB_KEY}`, apikey: SB_KEY, ...extra });
-const sbObj = (key) => `${SB_URL}/storage/v1/object/${SB_BUCKET}/${key.split('/').map(encodeURIComponent).join('/')}`;
+const blobSdk = USE_BLOB ? require('@vercel/blob') : null;
 
-const storage = USE_SUPABASE
+const storage = USE_BLOB
   ? {
-      async init() {
-        await fetch(`${SB_URL}/storage/v1/bucket`, {
-          method: 'POST',
-          headers: sbHeaders({ 'Content-Type': 'application/json' }),
-          body: JSON.stringify({ id: SB_BUCKET, name: SB_BUCKET, public: false }),
-        }).catch(() => {});
-      },
+      async init() {},
+      // small JSON metadata only (db.json); audio goes browser -> Blob directly
       async put(key, buf, type) {
-        const r = await fetch(sbObj(key), {
-          method: 'POST',
-          headers: sbHeaders({ 'Content-Type': type || 'application/octet-stream', 'x-upsert': 'true' }),
-          body: buf,
-        });
-        if (!r.ok) throw new Error(`Storage upload failed: ${r.status} ${await r.text()}`);
+        await blobSdk.put(key, buf, { access: 'public', allowOverwrite: true, addRandomSuffix: false, contentType: type, cacheControlMaxAge: 60 });
       },
       async get(key) {
-        const r = await fetch(sbObj(key), { headers: sbHeaders() });
-        if (!r.ok) return null;
-        return Buffer.from(await r.arrayBuffer());
+        try {
+          const r = await blobSdk.get(key, { access: 'public', useCache: false });
+          if (!r || r.statusCode !== 200) return null;
+          return Buffer.from(await new Response(r.stream).arrayBuffer());
+        } catch { return null; }
       },
       async del(key) {
-        await fetch(sbObj(key), { method: 'DELETE', headers: sbHeaders() }).catch(() => {});
+        await blobSdk.del(key).catch(() => {});
       },
-      // returns {redirect} for the HTTP layer
-      async serve(res, key, { download, filename }) {
-        const r = await fetch(
-          `${SB_URL}/storage/v1/object/sign/${SB_BUCKET}/${key.split('/').map(encodeURIComponent).join('/')}`,
-          { method: 'POST', headers: sbHeaders({ 'Content-Type': 'application/json' }), body: JSON.stringify({ expiresIn: 3600 }) }
-        );
-        if (!r.ok) return res.status(404).end();
-        const { signedURL } = await r.json();
-        let url = `${SB_URL}/storage/v1${signedURL}`;
-        if (download) url += `&download=${encodeURIComponent(filename)}`;
-        res.redirect(url);
+      async serve(res, key, { download }) {
+        res.redirect(download ? key + (key.includes('?') ? '&' : '?') + 'download=1' : key);
       },
     }
   : {
@@ -114,7 +93,7 @@ const safeEq = (a, b) => {
   return crypto.timingSafeEqual(ha, hb);
 };
 function getRole(req) {
-  const m = (req.headers.cookie || '').match(/(?:^|;s*)admin=([^;]+)/);
+  const m = (req.headers.cookie || '').match(/(?:^|;\s*)admin=([^;]+)/);
   return m && safeEq(decodeURIComponent(m[1]), sign('admin')) ? 'admin' : 'client';
 }
 const need = (...roles) => (req, res, next) => {
@@ -128,6 +107,12 @@ const need = (...roles) => (req, res, next) => {
 const app = express();
 app.set('trust proxy', 1);
 app.use(express.json({ limit: '100kb' }));
+if (USE_BLOB) {
+  app.use('/api', async (req, res, next) => {
+    try { await loadDb(); next(); } catch (e) { next(e); }
+  });
+}
+app.get('/api/config', (req, res) => res.json({ directUpload: USE_BLOB }));
 app.use(express.static(path.join(__dirname, 'public')));
 
 // Admin = open the secret link /admin/<ADMIN_PASSWORD> once; it sets a cookie. Everyone else is a client.
@@ -239,6 +224,42 @@ app.delete('/api/tracks/:id', need('admin'), async (req, res) => {
   res.json({ ok: true });
 });
 
+// Vercel only: browser uploads straight to Blob (functions can't take big bodies)
+app.post('/api/blob-upload', need('admin'), async (req, res) => {
+  try {
+    const { handleUpload } = require('@vercel/blob/client');
+    const json = await handleUpload({
+      body: req.body,
+      request: req,
+      onBeforeGenerateToken: async () => ({
+        allowedContentTypes: ['audio/*'],
+        maximumSizeInBytes: 200 * 1024 * 1024,
+        addRandomSuffix: true,
+      }),
+    });
+    res.json(json);
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+app.post('/api/tracks/register', need('admin'), async (req, res) => {
+  const { url, filename, size } = req.body || {};
+  if (!USE_BLOB || typeof url !== 'string' || !/^https:\/\/[^/]+\.blob\.vercel-storage\.com\//.test(url)) return res.status(400).json({ error: 'Bad upload' });
+  const t = {
+    id: crypto.randomUUID(),
+    title: cleanTitle(String(filename || 'Untitled')),
+    artist: '', tags: '',
+    filename: String(filename || 'track.mp3'),
+    storageKey: url,
+    size: Number(size) || 0,
+    status: 'pending', comment: '',
+    addedAt: new Date().toISOString(), reviewedAt: null,
+  };
+  db.tracks.unshift(t);
+  await saveDb();
+  res.json(publicTrack(t));
+});
+
 // stream (both roles) / download (admin only)
 app.get('/api/tracks/:id/file', need('admin', 'client'), async (req, res) => {
   const t = findTrack(req.params.id);
@@ -250,8 +271,13 @@ app.get('/api/tracks/:id/file', need('admin', 'client'), async (req, res) => {
   await storage.serve(res, t.storageKey, { download, filename });
 });
 
-(async () => {
+const ready = (async () => {
   await storage.init();
   await loadDb();
-  app.listen(PORT, () => console.log(`Music library running on http://localhost:${PORT}  (storage: ${USE_SUPABASE ? 'Supabase' : 'local disk'})`));
 })();
+
+if (process.env.VERCEL) {
+  module.exports = app; // Vercel runs it as a serverless function
+} else {
+  ready.then(() => app.listen(PORT, () => console.log(`Music library running on http://localhost:${PORT}  (storage: ${USE_BLOB ? 'Vercel Blob' : 'local disk'})`)));
+}

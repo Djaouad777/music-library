@@ -2,3 +2,8 @@ node_modules
 data
 .env
 *.log
+
+.vercel
+.env*
+migrate.js
+.admin-key.txt
