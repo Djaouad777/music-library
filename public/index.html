@@ -6,64 +6,131 @@
 <title>Djaoued-Cg Brand</title>
 <style>
   :root {
-    --bg:#f6f6f4; --card:#fff; --text:#1c1c1a; --muted:#6f6f6a; --line:#e4e4df;
-    --accent:#1c1c1a; --accent-text:#fff; --bad:#b3372f; --bad-bg:#fbe7e5;
+    --bg:#f5f3ef; --bg2:#ebe7df; --card:#ffffff; --text:#1d1b19; --muted:#7a766f; --line:#e6e1d8;
+    --accent:#b8893b; --accent2:#8a5f1c; --accent-soft:#f6ecd8; --on-accent:#fff;
+    --bad:#c0392b; --bad-soft:#fbe9e6; --shadow:0 1px 2px rgba(0,0,0,.04), 0 8px 24px rgba(40,30,10,.06);
   }
   @media (prefers-color-scheme: dark) {
     :root {
-      --bg:#141413; --card:#1e1e1c; --text:#ecece8; --muted:#9a9a93; --line:#2e2e2b;
-      --accent:#ecece8; --accent-text:#141413; --bad:#f0948d; --bad-bg:#3a1f1d;
+      --bg:#0f0e0d; --bg2:#171513; --card:#1a1816; --text:#f1ede6; --muted:#9b958b; --line:#2a2723;
+      --accent:#d9a84e; --accent2:#f0c577; --accent-soft:#2b2417; --on-accent:#16110a;
+      --bad:#f08a7e; --bad-soft:#3a1f1b; --shadow:0 1px 2px rgba(0,0,0,.4), 0 10px 30px rgba(0,0,0,.35);
     }
   }
   * { box-sizing:border-box; }
-  body { margin:0; background:var(--bg); color:var(--text); font:15px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif; padding-bottom:90px; }
-  header, main { max-width:900px; margin:0 auto; padding-left:16px; padding-right:16px; }
-  header { padding-top:22px; padding-bottom:12px; }
-  h1 { font-size:22px; margin:0; letter-spacing:.2px; }
-  .tagline { color:var(--muted); font-size:14px; margin-top:2px; }
-  button, input { font:inherit; color:inherit; }
-  button { cursor:pointer; border:1px solid var(--line); background:var(--card); padding:7px 12px; border-radius:8px; }
-  button:hover { border-color:var(--muted); }
-  button.danger:hover { border-color:var(--bad); color:var(--bad); background:var(--bad-bg); }
-  input[type=search] { width:100%; padding:9px 11px; border:1px solid var(--line); border-radius:8px; background:var(--card); margin-bottom:12px; }
-  .drop { border:2px dashed var(--line); border-radius:12px; padding:18px; text-align:center; color:var(--muted); margin-bottom:14px; background:var(--card); }
-  .drop.over { border-color:var(--accent); color:var(--text); }
-  .track { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:10px 12px; margin-bottom:10px; display:flex; gap:12px; align-items:center; }
-  .track.playing { border-color:var(--accent); }
-  .play { width:42px; height:42px; border-radius:50%; padding:0; flex:none; }
+  html { scroll-behavior:smooth; }
+  body { margin:0; color:var(--text); font:15px/1.5 "Segoe UI", system-ui, -apple-system, Roboto, sans-serif;
+         background:radial-gradient(1200px 500px at 50% -10%, var(--bg2), var(--bg) 70%) no-repeat, var(--bg); min-height:100vh; padding-bottom:110px; }
+  .wrap { max-width:860px; margin:0 auto; padding:0 18px; }
+
+  /* header */
+  header { padding:40px 0 22px; text-align:center; }
+  .logo { width:56px; height:56px; margin:0 auto 14px; border-radius:16px; display:grid; place-items:center; font-size:26px;
+          background:linear-gradient(135deg,var(--accent2),var(--accent)); color:var(--on-accent); box-shadow:var(--shadow); }
+  h1 { margin:0; font-size:30px; letter-spacing:.3px; font-weight:700; }
+  h1 span { color:var(--accent); }
+  .tagline { color:var(--muted); margin-top:6px; }
+
+  /* upload */
+  .drop { border:1.5px dashed var(--line); border-radius:18px; padding:22px; text-align:center; color:var(--muted);
+          background:color-mix(in srgb, var(--card) 70%, transparent); transition:.2s; }
+  .drop.over { border-color:var(--accent); background:var(--accent-soft); color:var(--text); transform:scale(1.01); }
+  .drop strong { color:var(--text); }
+  .btn { cursor:pointer; border:1px solid var(--line); background:var(--card); color:var(--text); padding:8px 14px; border-radius:10px;
+         font:inherit; transition:.15s; display:inline-flex; align-items:center; gap:6px; }
+  .btn:hover { border-color:var(--accent); color:var(--accent2); }
+  .btn.primary { background:linear-gradient(135deg,var(--accent2),var(--accent)); color:var(--on-accent); border-color:transparent; font-weight:600; }
+  .btn.primary:hover { color:var(--on-accent); filter:brightness(1.08); }
+  .progress { height:5px; border-radius:99px; background:var(--line); margin-top:14px; overflow:hidden; display:none; }
+  .progress i { display:block; height:100%; width:0; background:linear-gradient(90deg,var(--accent),var(--accent2)); transition:width .2s; }
+  #uploadStatus { font-size:13px; margin-top:10px; min-height:1em; }
+
+  /* toolbar */
+  .toolbar { display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin:26px 0 14px; }
+  .count { font-weight:600; margin-right:auto; }
+  .count small { color:var(--muted); font-weight:400; }
+  .search { position:relative; flex:1 1 220px; max-width:320px; }
+  .search input { width:100%; padding:10px 12px 10px 38px; border-radius:12px; border:1px solid var(--line); background:var(--card); color:var(--text); font:inherit; }
+  .search input:focus, .sort select:focus { outline:2px solid var(--accent); outline-offset:1px; }
+  .search::before { content:"⌕"; position:absolute; left:13px; top:50%; transform:translateY(-52%); font-size:18px; color:var(--muted); }
+  .sort select { padding:10px 12px; border-radius:12px; border:1px solid var(--line); background:var(--card); color:var(--text); font:inherit; cursor:pointer; }
+
+  /* tracks */
+  .track { display:flex; align-items:center; gap:14px; padding:12px 14px; margin-bottom:10px; background:var(--card);
+           border:1px solid var(--line); border-radius:16px; box-shadow:var(--shadow); transition:.18s; }
+  .track:hover { transform:translateY(-1px); border-color:color-mix(in srgb, var(--accent) 45%, var(--line)); }
+  .track.playing { border-color:var(--accent); background:linear-gradient(90deg,var(--accent-soft),var(--card) 55%); }
+  .play { width:46px; height:46px; flex:none; border:0; border-radius:50%; cursor:pointer; font-size:15px; display:grid; place-items:center;
+          background:linear-gradient(135deg,var(--accent2),var(--accent)); color:var(--on-accent); box-shadow:0 4px 12px color-mix(in srgb, var(--accent) 40%, transparent); transition:.15s; }
+  .play:hover { transform:scale(1.07); }
   .meta { min-width:0; flex:1; }
-  .title { font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .sub { color:var(--muted); font-size:13px; }
-  .empty { text-align:center; color:var(--muted); padding:40px 0; }
-  #player { position:fixed; left:0; right:0; bottom:0; background:var(--card); border-top:1px solid var(--line); padding:10px 16px; }
-  #player .inner { max-width:900px; margin:0 auto; display:flex; gap:12px; align-items:center; }
-  #player input[type=range] { flex:1; }
-  #player .now { width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:14px; }
-  .time { font-variant-numeric:tabular-nums; color:var(--muted); font-size:13px; }
-  @media (max-width:600px) { #player .now { display:none; } .track { flex-wrap:wrap; } .meta { flex-basis:60%; } }
+  .title { font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; unicode-bidi:plaintext; }
+  .sub { color:var(--muted); font-size:13px; display:flex; gap:10px; align-items:center; margin-top:1px; }
+  .eq { display:none; gap:2px; align-items:flex-end; height:12px; }
+  .track.playing.live .eq { display:inline-flex; }
+  .eq i { width:3px; background:var(--accent); border-radius:2px; animation:eq 0.9s ease-in-out infinite; }
+  .eq i:nth-child(2){ animation-delay:.2s } .eq i:nth-child(3){ animation-delay:.4s }
+  @keyframes eq { 0%,100%{height:3px} 50%{height:12px} }
+  .icon { width:38px; height:38px; display:grid; place-items:center; border-radius:10px; border:1px solid var(--line); background:transparent;
+          color:var(--muted); cursor:pointer; font-size:16px; transition:.15s; flex:none; }
+  .icon:hover { color:var(--accent2); border-color:var(--accent); }
+  .icon.danger:hover { color:var(--bad); border-color:var(--bad); background:var(--bad-soft); }
+  .empty { text-align:center; color:var(--muted); padding:60px 0; }
+  .empty .big { font-size:42px; margin-bottom:6px; }
+
+  /* player */
+  #player { position:fixed; left:0; right:0; bottom:0; z-index:10; padding:12px 18px;
+            background:color-mix(in srgb, var(--card) 88%, transparent); backdrop-filter:blur(14px); border-top:1px solid var(--line); }
+  #player .inner { max-width:860px; margin:0 auto; display:flex; align-items:center; gap:14px; }
+  #pbtn { width:42px; height:42px; }
+  .now { width:210px; font-size:14px; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; unicode-bidi:plaintext; }
+  .time { font-variant-numeric:tabular-nums; color:var(--muted); font-size:12.5px; min-width:34px; }
+  input[type=range] { flex:1; accent-color:var(--accent); cursor:pointer; }
+  @media (max-width:640px) {
+    h1 { font-size:24px; } header { padding-top:28px; }
+    .now { display:none; } .count { width:100%; }
+    .search { max-width:none; } .track { padding:10px; gap:10px; }
+    .icon.dl span { display:none; }
+  }
 </style>
 </head>
 <body>
-<header>
-  <h1>Djaoued-Cg Brand</h1>
-  <div class="tagline">Music library · listen, add songs, or remove the ones that don't fit.</div>
-</header>
-<main>
+<div class="wrap">
+  <header>
+    <div class="logo">♪</div>
+    <h1>Djaoued-Cg <span>Brand</span></h1>
+    <div class="tagline">Our music library — listen, add songs, or remove the ones that don't fit.</div>
+  </header>
+
   <div class="drop" id="drop">
-    Drag MP3 files here, or <button id="pickBtn">choose files</button>
+    <div><strong>Drop MP3 files here</strong> to add them to the library</div>
+    <div style="margin-top:12px"><button class="btn primary" id="pickBtn">＋ Choose files</button></div>
     <input type="file" id="fileInput" accept="audio/*,.mp3,.wav,.m4a,.aac,.ogg,.flac" multiple hidden>
-    <div id="uploadStatus" class="sub"></div>
+    <div class="progress" id="progress"><i></i></div>
+    <div id="uploadStatus"></div>
   </div>
-  <input type="search" id="search" placeholder="Search songs…">
+
+  <div class="toolbar">
+    <div class="count" id="count"></div>
+    <div class="search"><input type="search" id="search" placeholder="Search songs…" aria-label="Search songs"></div>
+    <div class="sort">
+      <select id="sort" aria-label="Sort songs">
+        <option value="new">Newest first</option>
+        <option value="old">Oldest first</option>
+        <option value="az">Name A → Z</option>
+      </select>
+    </div>
+  </div>
+
   <div id="list"></div>
-</main>
+</div>
 
 <div id="player">
   <div class="inner">
-    <button id="pbtn" class="play">▶</button>
+    <button id="pbtn" class="play" aria-label="Play / pause">▶</button>
     <div class="now" id="now">Nothing playing</div>
     <span class="time" id="cur">0:00</span>
-    <input type="range" id="seek" min="0" max="1000" value="0">
+    <input type="range" id="seek" min="0" max="1000" value="0" aria-label="Seek">
     <span class="time" id="dur">0:00</span>
   </div>
 </div>
@@ -72,7 +139,9 @@
 <script>
 const $ = (s) => document.querySelector(s);
 const audio = $('#audio');
-let directUpload = false, tracks = [], query = '', playingId = null;
+let directUpload = false, tracks = [], query = '', sortBy = 'new', playingId = null;
+try { sortBy = localStorage.getItem('sortBy') || 'new'; } catch {}
+$('#sort').value = sortBy;
 
 async function api(url, opts = {}) {
   const isForm = opts.body instanceof FormData;
@@ -87,24 +156,38 @@ async function api(url, opts = {}) {
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const fmt = (s) => { if (!isFinite(s)) return '0:00'; s = Math.floor(s); return Math.floor(s/60) + ':' + String(s%60).padStart(2,'0'); };
 const mb = (b) => (b/1048576).toFixed(1) + ' MB';
+const when = (iso) => { const d = new Date(iso); return isNaN(d) ? '' : d.toLocaleDateString(undefined, { day:'numeric', month:'short', year:'numeric' }); };
+
+function sorted(list) {
+  const a = [...list];
+  if (sortBy === 'az') return a.sort((x, y) => x.title.localeCompare(y.title));
+  const t = (x) => +new Date(x.addedAt) || 0;
+  return a.sort((x, y) => sortBy === 'old' ? t(x) - t(y) : t(y) - t(x));
+}
 
 function render() {
   const q = query.toLowerCase();
-  const shown = tracks.filter(t => !q || t.title.toLowerCase().includes(q));
-  if (!shown.length) { $('#list').innerHTML = `<div class="empty">${tracks.length ? 'No songs match.' : 'No songs yet — drop some MP3s above.'}</div>`; return; }
+  const shown = sorted(tracks.filter(t => !q || t.title.toLowerCase().includes(q)));
+  $('#count').innerHTML = `${tracks.length} song${tracks.length === 1 ? '' : 's'}` + (q ? ` <small>· ${shown.length} match${shown.length === 1 ? '' : 'es'}</small>` : '');
+  if (!shown.length) {
+    $('#list').innerHTML = `<div class="empty"><div class="big">🎵</div>${tracks.length ? 'No songs match your search.' : 'No songs yet — drop some MP3s above.'}</div>`;
+    return;
+  }
+  const live = !audio.paused;
   $('#list').innerHTML = shown.map(t => `
-    <div class="track ${t.id===playingId?'playing':''}" data-id="${t.id}">
-      <button class="play" data-act="play" title="Play">${t.id===playingId && !audio.paused ? '❚❚' : '▶'}</button>
+    <div class="track ${t.id === playingId ? 'playing' : ''} ${t.id === playingId && live ? 'live' : ''}" data-id="${t.id}">
+      <button class="play" data-act="play" aria-label="Play">${t.id === playingId && live ? '❚❚' : '▶'}</button>
       <div class="meta">
-        <div class="title">${esc(t.title)}</div>
-        <div class="sub">${mb(t.size)}</div>
+        <div class="title" title="${esc(t.title)}">${esc(t.title)}</div>
+        <div class="sub"><span class="eq"><i></i><i></i><i></i></span><span>${mb(t.size)}</span><span>·</span><span>${when(t.addedAt)}</span></div>
       </div>
-      <button data-act="download" title="Download">⬇ Download</button>
-      <button data-act="delete" class="danger" title="Delete this song" aria-label="Delete">🗑</button>
+      <button class="icon dl" data-act="download" title="Download" aria-label="Download">⬇</button>
+      <button class="icon danger" data-act="delete" title="Delete this song" aria-label="Delete">🗑</button>
     </div>`).join('');
 }
 
 $('#search').oninput = (e) => { query = e.target.value; render(); };
+$('#sort').onchange = (e) => { sortBy = e.target.value; try { localStorage.setItem('sortBy', sortBy); } catch {} render(); };
 
 $('#list').onclick = async (e) => {
   const btn = e.target.closest('button[data-act]'); if (!btn) return;
@@ -116,7 +199,7 @@ $('#list').onclick = async (e) => {
       if (!confirm(`Delete "${t.title}" for everyone? This can't be undone.`)) return;
       await api(`/api/tracks/${id}`, { method:'DELETE' });
       tracks = tracks.filter(x => x.id !== id);
-      if (playingId === id) { audio.pause(); audio.removeAttribute('src'); playingId = null; $('#now').textContent = 'Nothing playing'; }
+      if (playingId === id) { audio.pause(); audio.removeAttribute('src'); playingId = null; $('#now').textContent = 'Nothing playing'; $('#pbtn').textContent = '▶'; }
       render();
     }
   } catch (err) { alert(err.message); }
@@ -126,6 +209,7 @@ $('#list').onclick = async (e) => {
 async function uploadFiles(files) {
   files = [...files].filter(f => /^audio\//.test(f.type) || /\.(mp3|wav|m4a|aac|ogg|flac)$/i.test(f.name));
   if (!files.length) return;
+  const bar = $('#progress'), fill = bar.firstElementChild; bar.style.display = 'block'; fill.style.width = '0';
   let done = 0;
   for (const f of files) {
     $('#uploadStatus').textContent = `Uploading ${++done}/${files.length}: ${f.name}`;
@@ -133,7 +217,8 @@ async function uploadFiles(files) {
       if (directUpload) {
         const { upload } = await import('https://esm.sh/@vercel/blob@2.8.2/client');
         const safe = f.name.replace(/[\/\\?#%]+/g, '_');
-        const blob = await upload('music/' + safe, f, { access:'public', handleUploadUrl:'/api/blob-upload', multipart: f.size > 20e6 });
+        const blob = await upload('music/' + safe, f, { access:'public', handleUploadUrl:'/api/blob-upload', multipart: f.size > 20e6,
+          onUploadProgress: (p) => { fill.style.width = (((done - 1) + p.percentage / 100) / files.length * 100) + '%'; } });
         tracks.unshift(await api('/api/tracks/register', { method:'POST', body:{ url: blob.url, filename: f.name, size: f.size } }));
       } else {
         const fd = new FormData(); fd.append('files', f);
@@ -141,8 +226,10 @@ async function uploadFiles(files) {
       }
       render();
     } catch (err) { alert(`${f.name}: ${err.message}`); }
+    fill.style.width = (done / files.length * 100) + '%';
   }
-  $('#uploadStatus').textContent = `Done — ${files.length} file(s) added.`;
+  $('#uploadStatus').textContent = `✓ ${files.length} song${files.length === 1 ? '' : 's'} added`;
+  setTimeout(() => { bar.style.display = 'none'; }, 1500);
 }
 $('#pickBtn').onclick = () => $('#fileInput').click();
 $('#fileInput').onchange = (e) => { uploadFiles(e.target.files); e.target.value = ''; };
@@ -165,8 +252,8 @@ audio.addEventListener('timeupdate', () => {
   if (!seeking) $('#seek').value = audio.duration ? (audio.currentTime / audio.duration) * 1000 : 0;
 });
 audio.addEventListener('ended', () => {
-  const shown = [...document.querySelectorAll('.track')].map(r => r.dataset.id);
-  const next = tracks.find(t => t.id === shown[shown.indexOf(playingId) + 1]);
+  const ids = [...document.querySelectorAll('.track')].map(r => r.dataset.id);
+  const next = tracks.find(t => t.id === ids[ids.indexOf(playingId) + 1]);
   if (next) togglePlay(next);
 });
 let seeking = false;
