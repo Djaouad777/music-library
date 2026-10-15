@@ -1,0 +1,270 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Music Library</title>
+<style>
+  :root {
+    --bg:#f6f6f4; --card:#fff; --text:#1c1c1a; --muted:#6f6f6a; --line:#e4e4df;
+    --accent:#1c1c1a; --accent-text:#fff;
+    --ok:#1f7a4d; --ok-bg:#e3f4ea; --bad:#b3372f; --bad-bg:#fbe7e5; --wait:#8a6d1a; --wait-bg:#f8f0d6;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg:#141413; --card:#1e1e1c; --text:#ecece8; --muted:#9a9a93; --line:#2e2e2b;
+      --accent:#ecece8; --accent-text:#141413;
+      --ok:#6fd1a0; --ok-bg:#183326; --bad:#f0948d; --bad-bg:#3a1f1d; --wait:#e6c565; --wait-bg:#3a321a;
+    }
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:15px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif; padding-bottom:110px; }
+  header { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:16px; max-width:900px; margin:0 auto; }
+  h1 { font-size:20px; margin:0; }
+  main { max-width:900px; margin:0 auto; padding:0 16px; }
+  button, input, select { font:inherit; color:inherit; }
+  button { cursor:pointer; border:1px solid var(--line); background:var(--card); padding:7px 12px; border-radius:8px; }
+  button:hover { border-color:var(--muted); }
+  button.primary { background:var(--accent); color:var(--accent-text); border-color:var(--accent); }
+  button.ok { color:var(--ok); } button.bad { color:var(--bad); }
+  button.on-ok { background:var(--ok-bg); border-color:var(--ok); color:var(--ok); }
+  button.on-bad { background:var(--bad-bg); border-color:var(--bad); color:var(--bad); }
+  input[type=text], input[type=password], input[type=search] { width:100%; padding:9px 11px; border:1px solid var(--line); border-radius:8px; background:var(--card); }
+  .login { max-width:340px; margin:18vh auto 0; padding:0 16px; text-align:center; }
+  .login form { display:grid; gap:10px; margin-top:16px; }
+  .err { color:var(--bad); min-height:1.2em; font-size:14px; }
+  .toolbar { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:12px; align-items:center; }
+  .toolbar input[type=search] { flex:1 1 200px; width:auto; }
+  .chips { display:flex; gap:6px; flex-wrap:wrap; }
+  .chip { border-radius:999px; padding:5px 12px; font-size:14px; }
+  .chip.active { background:var(--accent); color:var(--accent-text); border-color:var(--accent); }
+  .drop { border:2px dashed var(--line); border-radius:12px; padding:18px; text-align:center; color:var(--muted); margin-bottom:14px; background:var(--card); }
+  .drop.over { border-color:var(--accent); color:var(--text); }
+  .track { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:12px; margin-bottom:10px; display:grid; grid-template-columns:auto 1fr auto; gap:12px; align-items:center; }
+  .track.playing { border-color:var(--accent); }
+  .play { width:42px; height:42px; border-radius:50%; padding:0; display:grid; place-items:center; font-size:16px; }
+  .meta { min-width:0; }
+  .title { font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .sub { color:var(--muted); font-size:13px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .badge { display:inline-block; font-size:12px; padding:2px 8px; border-radius:999px; margin-right:6px; }
+  .badge.pending { background:var(--wait-bg); color:var(--wait); }
+  .badge.approved { background:var(--ok-bg); color:var(--ok); }
+  .badge.rejected { background:var(--bad-bg); color:var(--bad); }
+  .actions { display:flex; gap:6px; flex-wrap:wrap; justify-content:flex-end; }
+  .comment { grid-column:1 / -1; display:flex; gap:8px; }
+  .note { grid-column:1 / -1; font-size:13px; color:var(--muted); }
+  .empty { text-align:center; color:var(--muted); padding:40px 0; }
+  #player { position:fixed; left:0; right:0; bottom:0; background:var(--card); border-top:1px solid var(--line); padding:10px 16px; }
+  #player .inner { max-width:900px; margin:0 auto; display:flex; gap:12px; align-items:center; }
+  #player input[type=range] { flex:1; }
+  #player .now { min-width:0; width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:14px; }
+  .time { font-variant-numeric:tabular-nums; color:var(--muted); font-size:13px; }
+  .hidden { display:none !important; }
+  dialog { border:1px solid var(--line); border-radius:12px; background:var(--card); color:var(--text); max-width:420px; width:calc(100% - 32px); }
+  dialog form { display:grid; gap:10px; }
+  @media (max-width:600px) {
+    .track { grid-template-columns:auto 1fr; }
+    .actions { grid-column:1 / -1; justify-content:flex-start; }
+    #player .now { display:none; }
+  }
+</style>
+</head>
+<body>
+
+<div id="appView" class="hidden">
+  <header>
+    <h1>Music Library <span id="roleTag" class="sub"></span></h1>
+    <button id="logoutBtn" class="hidden">Exit admin</button>
+  </header>
+  <main>
+    <div id="adminBox" class="hidden">
+      <div class="drop" id="drop">
+        Drag MP3 files here, or <button id="pickBtn">choose files</button>
+        <input type="file" id="fileInput" accept="audio/*,.mp3,.wav,.m4a,.aac,.ogg,.flac" multiple class="hidden">
+        <div id="uploadStatus" class="sub"></div>
+      </div>
+    </div>
+
+    <div class="toolbar">
+      <input type="search" id="search" placeholder="Search title, artist, tags…">
+      <button id="approveAllBtn" class="hidden">Approve all pending</button>
+    </div>
+    <div class="toolbar"><div class="chips" id="chips"></div></div>
+
+    <div id="list"></div>
+  </main>
+
+  <div id="player">
+    <div class="inner">
+      <button id="pbtn" class="play">▶</button>
+      <div class="now" id="now">Nothing playing</div>
+      <span class="time" id="cur">0:00</span>
+      <input type="range" id="seek" min="0" max="1000" value="0">
+      <span class="time" id="dur">0:00</span>
+    </div>
+  </div>
+</div>
+
+<dialog id="editDlg">
+  <form method="dialog" id="editForm">
+    <h3 style="margin:0">Edit track</h3>
+    <input type="text" id="eTitle" placeholder="Title">
+    <input type="text" id="eArtist" placeholder="Artist">
+    <input type="text" id="eTags" placeholder="Tags (comma separated)">
+    <div style="display:flex;gap:8px;justify-content:flex-end">
+      <button value="cancel">Cancel</button>
+      <button class="primary" value="save">Save</button>
+    </div>
+  </form>
+</dialog>
+
+<audio id="audio" preload="none"></audio>
+
+<script>
+const $ = (s) => document.querySelector(s);
+const audio = $('#audio');
+let role = null, tracks = [], filter = 'all', query = '', playingId = null, editingId = null;
+
+async function api(url, opts = {}) {
+  const r = await fetch(url, { credentials:'same-origin', ...opts,
+    headers: opts.body && !(opts.body instanceof FormData) ? { 'Content-Type':'application/json' } : undefined,
+    body: opts.body && !(opts.body instanceof FormData) ? JSON.stringify(opts.body) : opts.body });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) { throw new Error(data.error || r.statusText); }
+  return data;
+}
+
+async function showApp() {
+  $('#appView').classList.remove('hidden'); $('#logoutBtn').classList.toggle('hidden', role !== 'admin');
+  $('#roleTag').textContent = role === 'admin' ? '· admin' : '';
+  $('#adminBox').classList.toggle('hidden', role !== 'admin');
+  $('#approveAllBtn').classList.toggle('hidden', role !== 'client');
+  await load();
+}
+async function load() { tracks = await api('/api/tracks'); render(); }
+
+$('#logoutBtn').onclick = async () => { await api('/api/exit-admin', { method:'POST' }); location.reload(); };
+
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fmt = (s) => { if (!isFinite(s)) return '0:00'; s = Math.floor(s); return Math.floor(s/60) + ':' + String(s%60).padStart(2,'0'); };
+const mb = (b) => (b/1048576).toFixed(1) + ' MB';
+
+function counts() { const c = { all:tracks.length, pending:0, approved:0, rejected:0 }; tracks.forEach(t => c[t.status]++); return c; }
+
+function render() {
+  const c = counts();
+  $('#chips').innerHTML = [['all','All'],['pending','Pending'],['approved','Approved'],['rejected','Rejected']]
+    .map(([k,l]) => `<button class="chip ${filter===k?'active':''}" data-f="${k}">${l} (${c[k]})</button>`).join('');
+  const q = query.toLowerCase();
+  const shown = tracks.filter(t => (filter==='all' || t.status===filter) &&
+    (!q || [t.title,t.artist,t.tags].join(' ').toLowerCase().includes(q)));
+  if (!shown.length) { $('#list').innerHTML = `<div class="empty">${tracks.length ? 'No tracks match.' : (role==='admin' ? 'No tracks yet — drop some MP3s above.' : 'No tracks yet.')}</div>`; return; }
+  $('#list').innerHTML = shown.map(t => `
+    <div class="track ${t.id===playingId?'playing':''}" data-id="${t.id}">
+      <button class="play" data-act="play">${t.id===playingId && !audio.paused ? '❚❚' : '▶'}</button>
+      <div class="meta">
+        <div class="title">${esc(t.title)}</div>
+        <div class="sub"><span class="badge ${t.status}">${t.status}</span>${esc([t.artist,t.tags].filter(Boolean).join(' · '))}${role==='admin' ? ' · ' + mb(t.size) : ''}</div>
+      </div>
+      <div class="actions">
+        <button data-act="approve" class="${t.status==='approved'?'on-ok':'ok'}">✓ Approve</button>
+        <button data-act="reject" class="${t.status==='rejected'?'on-bad':'bad'}">✕ Reject</button>
+        ${role==='admin' ? `<button data-act="download">⬇ Download</button><button data-act="edit">Edit</button><button data-act="delete" class="bad">Delete</button>` : ''}
+      </div>
+      ${role==='client' && t.status!=='pending' ? `<div class="comment"><input type="text" data-comment value="${esc(t.comment)}" placeholder="Add a comment (optional)"><button data-act="saveComment">Save</button></div>` : ''}
+      ${role==='admin' && t.comment ? `<div class="note">Client comment: “${esc(t.comment)}”</div>` : ''}
+    </div>`).join('');
+}
+
+$('#chips').onclick = (e) => { const f = e.target.dataset.f; if (f) { filter = f; render(); } };
+$('#search').oninput = (e) => { query = e.target.value; render(); };
+
+$('#list').onclick = async (e) => {
+  const btn = e.target.closest('button[data-act]'); if (!btn) return;
+  const row = btn.closest('.track'); const id = row.dataset.id; const t = tracks.find(x => x.id === id);
+  const act = btn.dataset.act;
+  try {
+    if (act === 'play') return togglePlay(t);
+    if (act === 'approve' || act === 'reject') {
+      const target = act === 'approve' ? 'approved' : 'rejected';
+      const status = t.status === target ? 'pending' : target; // click again to undo
+      const comment = row.querySelector('[data-comment]')?.value;
+      Object.assign(t, await api(`/api/tracks/${id}/review`, { method:'POST', body:{ status, comment } })); return render();
+    }
+    if (act === 'saveComment') {
+      Object.assign(t, await api(`/api/tracks/${id}/review`, { method:'POST', body:{ status:t.status, comment: row.querySelector('[data-comment]').value } }));
+      btn.textContent = 'Saved'; return setTimeout(render, 900);
+    }
+    if (act === 'download') { location.href = `/api/tracks/${id}/file?download=1`; return; }
+    if (act === 'edit') {
+      editingId = id; $('#eTitle').value = t.title; $('#eArtist').value = t.artist; $('#eTags').value = t.tags; return $('#editDlg').showModal();
+    }
+    if (act === 'delete') {
+      if (!confirm(`Delete "${t.title}" permanently?`)) return;
+      await api(`/api/tracks/${id}`, { method:'DELETE' }); tracks = tracks.filter(x => x.id !== id); if (playingId === id) { audio.pause(); playingId = null; } render();
+    }
+  } catch (err) { alert(err.message); }
+};
+
+$('#editForm').addEventListener('submit', async (e) => {
+  if (e.submitter?.value !== 'save') return;
+  const t = tracks.find(x => x.id === editingId);
+  try { Object.assign(t, await api(`/api/tracks/${editingId}`, { method:'PATCH', body:{ title:$('#eTitle').value, artist:$('#eArtist').value, tags:$('#eTags').value } })); render(); }
+  catch (err) { alert(err.message); }
+});
+
+$('#approveAllBtn').onclick = async () => {
+  const n = counts().pending; if (!n) return alert('Nothing pending.');
+  if (!confirm(`Approve all ${n} pending tracks?`)) return;
+  tracks = await api('/api/review-all', { method:'POST', body:{ status:'approved' } }); render();
+};
+
+/* upload */
+async function uploadFiles(files) {
+  files = [...files].filter(f => /^audio\//.test(f.type) || /\.(mp3|wav|m4a|aac|ogg|flac)$/i.test(f.name));
+  if (!files.length) return;
+  let done = 0;
+  for (const f of files) {
+    $('#uploadStatus').textContent = `Uploading ${++done}/${files.length}: ${f.name}`;
+    const fd = new FormData(); fd.append('files', f);
+    try { const added = await api('/api/tracks', { method:'POST', body:fd }); tracks.unshift(...added); render(); }
+    catch (err) { alert(`${f.name}: ${err.message}`); }
+  }
+  $('#uploadStatus').textContent = `Done — ${files.length} file(s) processed.`;
+}
+$('#pickBtn').onclick = () => $('#fileInput').click();
+$('#fileInput').onchange = (e) => { uploadFiles(e.target.files); e.target.value = ''; };
+const drop = $('#drop');
+['dragover','dragenter'].forEach(ev => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.add('over'); }));
+['dragleave','drop'].forEach(ev => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.remove('over'); }));
+drop.addEventListener('drop', (e) => uploadFiles(e.dataTransfer.files));
+
+/* player */
+function togglePlay(t) {
+  if (playingId === t.id) { audio.paused ? audio.play() : audio.pause(); return; }
+  playingId = t.id; audio.src = `/api/tracks/${t.id}/file`; audio.play().catch(()=>{});
+  $('#now').textContent = t.title; render();
+}
+$('#pbtn').onclick = () => { if (audio.src) audio.paused ? audio.play() : audio.pause(); };
+audio.addEventListener('play', () => { $('#pbtn').textContent = '❚❚'; render(); });
+audio.addEventListener('pause', () => { $('#pbtn').textContent = '▶'; render(); });
+audio.addEventListener('timeupdate', () => {
+  $('#cur').textContent = fmt(audio.currentTime); $('#dur').textContent = fmt(audio.duration);
+  if (!seeking) $('#seek').value = audio.duration ? (audio.currentTime / audio.duration) * 1000 : 0;
+});
+audio.addEventListener('ended', () => {
+  const shown = [...document.querySelectorAll('.track')].map(r => r.dataset.id);
+  const next = tracks.find(t => t.id === shown[shown.indexOf(playingId) + 1]);
+  if (next) togglePlay(next);
+});
+let seeking = false;
+$('#seek').addEventListener('input', () => { seeking = true; });
+$('#seek').addEventListener('change', (e) => { audio.currentTime = (e.target.value / 1000) * audio.duration; seeking = false; });
+
+(async () => {
+  const me = await api('/api/me').catch(() => ({ role:'client' }));
+  role = me.role; showApp();
+})();
+</script>
+</body>
+</html>
