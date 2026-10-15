@@ -14,11 +14,7 @@ try {
 } catch {}
 
 const PORT = process.env.PORT || 3000;
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'admin';
-const SECRET = process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex');
 const USE_BLOB = !!process.env.BLOB_READ_WRITE_TOKEN;
-
-if (!process.env.ADMIN_PASSWORD) console.warn('WARNING: ADMIN_PASSWORD not set, using default "admin".');
 
 /* ---------------- storage drivers ---------------- */
 const DATA_DIR = path.join(__dirname, 'data');
@@ -35,9 +31,10 @@ const storage = USE_BLOB
       },
       async get(key) {
         try {
-          const r = await blobSdk.get(key, { access: 'public', useCache: false });
-          if (!r || r.statusCode !== 200) return null;
-          return Buffer.from(await new Response(r.stream).arrayBuffer());
+          // head() isn't CDN-cached; the cache-busting query makes the read see the latest write
+          const h = await blobSdk.head(key);
+          const r = await fetch(h.url + '?cb=' + Date.now(), { cache: 'no-store' });
+          return r.ok ? Buffer.from(await r.arrayBuffer()) : null;
         } catch { return null; }
       },
       async del(key) {
@@ -86,52 +83,67 @@ function saveDb() {
 }
 
 /* ---------------- auth ---------------- */
-const sign = (v) => crypto.createHmac('sha256', SECRET).update(v).digest('hex');
-const safeEq = (a, b) => {
-  const ha = crypto.createHash('sha256').update(String(a)).digest();
-  const hb = crypto.createHash('sha256').update(String(b)).digest();
-  return crypto.timingSafeEqual(ha, hb);
-};
-function getRole(req) {
-  const m = (req.headers.cookie || '').match(/(?:^|;\s*)admin=([^;]+)/);
-  return m && safeEq(decodeURIComponent(m[1]), sign('admin')) ? 'admin' : 'client';
-}
-const need = (...roles) => (req, res, next) => {
-  const role = getRole(req);
-  if (!roles.includes(role)) return res.status(403).json({ error: 'Forbidden' });
-  req.role = role;
-  next();
-};
+// No logins: anyone with the link can listen, upload, download and delete.
+const need = () => (req, res, next) => next();
 
 /* ---------------- app ---------------- */
 const app = express();
 app.set('trust proxy', 1);
 app.use(express.json({ limit: '100kb' }));
-if (USE_BLOB) {
-  app.use('/api', async (req, res, next) => {
-    try { await loadDb(); next(); } catch (e) { next(e); }
-  });
-}
 app.get('/api/config', (req, res) => res.json({ directUpload: USE_BLOB }));
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Admin = open the secret link /admin/<ADMIN_PASSWORD> once; it sets a cookie. Everyone else is a client.
-app.get('/admin/:key', (req, res) => {
-  if (!safeEq(req.params.key, ADMIN_PASSWORD)) return res.status(404).send('Not found');
-  res.setHeader('Set-Cookie', `admin=${encodeURIComponent(sign('admin'))}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${60 * 60 * 24 * 365}${req.secure ? '; Secure' : ''}`);
-  res.redirect('/');
-});
-app.post('/api/exit-admin', (req, res) => {
-  res.setHeader('Set-Cookie', 'admin=; HttpOnly; Path=/; Max-Age=0');
-  res.json({ ok: true });
-});
-app.get('/api/me', (req, res) => res.json({ role: getRole(req) }));
+/* ---- Vercel mode: the stored files themselves are the library ---- */
+if (USE_BLOB) {
+  const b64 = (u) => Buffer.from(u).toString('base64url');
+  const urlOf = (id) => {
+    try {
+      const u = Buffer.from(String(id), 'base64url').toString();
+      return /^https:\/\/[a-z0-9]+\.public\.blob\.vercel-storage\.com\/music\//.test(u) ? u : null;
+    } catch { return null; }
+  };
+  const titleOf = (url) => {
+    let n = decodeURIComponent(new URL(url).pathname.split('/').pop());
+    n = n.replace(/\.[A-Za-z0-9]{2,5}$/, '').replace(/-[A-Za-z0-9]{20,}$/, '');
+    return n.replace(/_+/g, ' ').replace(/\s+/g, ' ').trim() || 'Untitled';
+  };
+  const toTrack = (url, size, uploadedAt) => ({ id: b64(url), title: titleOf(url), size, addedAt: uploadedAt });
+
+  app.get('/api/tracks', async (req, res) => {
+    try {
+      const out = [];
+      let cursor;
+      do {
+        const page = await blobSdk.list({ prefix: 'music/', cursor, limit: 1000 });
+        for (const x of page.blobs) out.push({ ...toTrack(x.url, x.size, x.uploadedAt), t: +new Date(x.uploadedAt) });
+        cursor = page.hasMore ? page.cursor : undefined;
+      } while (cursor);
+      out.sort((p, q) => q.t - p.t);
+      res.json(out.map(({ t, ...rest }) => rest));
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+  app.post('/api/tracks/register', (req, res) => {
+    const { url, size } = req.body || {};
+    if (!urlOf(b64(String(url)))) return res.status(400).json({ error: 'Bad upload' });
+    res.json(toTrack(url, Number(size) || 0, new Date().toISOString()));
+  });
+  app.delete('/api/tracks/:id', async (req, res) => {
+    const url = urlOf(req.params.id);
+    if (!url) return res.status(404).json({ error: 'Not found' });
+    try { await blobSdk.del(url); res.json({ ok: true }); } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+  app.get('/api/tracks/:id/file', (req, res) => {
+    const url = urlOf(req.params.id);
+    if (!url) return res.status(404).end();
+    res.redirect(req.query.download === '1' ? url + '?download=1' : url);
+  });
+}
 
 const publicTrack = (t) => {
   const { storageKey, ...rest } = t;
   return rest;
 };
-app.get('/api/tracks', need('admin', 'client'), (req, res) => {
+app.get('/api/tracks', need(), (req, res) => {
   res.json(db.tracks.map(publicTrack));
 });
 
@@ -146,7 +158,7 @@ const cleanTitle = (name) =>
 // multer decodes filenames as latin1; fix UTF-8 names
 const fixName = (n) => Buffer.from(n, 'latin1').toString('utf8');
 
-app.post('/api/tracks', need('admin'), upload.array('files', 50), async (req, res) => {
+app.post('/api/tracks', need(), upload.array('files', 50), async (req, res) => {
   try {
     const added = [];
     for (const f of req.files || []) {
@@ -163,13 +175,10 @@ app.post('/api/tracks', need('admin'), upload.array('files', 50), async (req, re
         filename: original,
         storageKey,
         size: f.size,
-        status: 'pending',
-        comment: '',
         addedAt: new Date().toISOString(),
-        reviewedAt: null,
       };
       db.tracks.unshift(t);
-      added.push(publicTrack(t, 'admin'));
+      added.push(publicTrack(t));
     }
     await saveDb();
     res.json(added);
@@ -181,41 +190,7 @@ app.post('/api/tracks', need('admin'), upload.array('files', 50), async (req, re
 
 const findTrack = (id) => db.tracks.find((t) => t.id === id);
 
-app.patch('/api/tracks/:id', need('admin'), async (req, res) => {
-  const t = findTrack(req.params.id);
-  if (!t) return res.status(404).json({ error: 'Not found' });
-  for (const k of ['title', 'artist', 'tags']) if (typeof req.body[k] === 'string') t[k] = req.body[k].slice(0, 200);
-  if (['pending', 'approved', 'rejected'].includes(req.body.status)) {
-    t.status = req.body.status;
-    t.reviewedAt = t.status === 'pending' ? null : new Date().toISOString();
-  }
-  await saveDb();
-  res.json(publicTrack(t, 'admin'));
-});
-
-// Client (or admin) review: approve / reject / reset with optional comment
-app.post('/api/tracks/:id/review', need('admin', 'client'), async (req, res) => {
-  const t = findTrack(req.params.id);
-  if (!t) return res.status(404).json({ error: 'Not found' });
-  const { status, comment } = req.body || {};
-  if (!['pending', 'approved', 'rejected'].includes(status)) return res.status(400).json({ error: 'Bad status' });
-  t.status = status;
-  if (typeof comment === 'string') t.comment = comment.slice(0, 500);
-  t.reviewedAt = status === 'pending' ? null : new Date().toISOString();
-  await saveDb();
-  res.json(publicTrack(t, req.role));
-});
-
-app.post('/api/review-all', need('client', 'admin'), async (req, res) => {
-  const status = req.body && req.body.status;
-  if (status !== 'approved') return res.status(400).json({ error: 'Bad status' });
-  const now = new Date().toISOString();
-  for (const t of db.tracks) if (t.status === 'pending') { t.status = 'approved'; t.reviewedAt = now; }
-  await saveDb();
-  res.json(db.tracks.map((t) => publicTrack(t, req.role)));
-});
-
-app.delete('/api/tracks/:id', need('admin'), async (req, res) => {
+app.delete('/api/tracks/:id', need(), async (req, res) => {
   const i = db.tracks.findIndex((t) => t.id === req.params.id);
   if (i < 0) return res.status(404).json({ error: 'Not found' });
   const [t] = db.tracks.splice(i, 1);
@@ -225,7 +200,7 @@ app.delete('/api/tracks/:id', need('admin'), async (req, res) => {
 });
 
 // Vercel only: browser uploads straight to Blob (functions can't take big bodies)
-app.post('/api/blob-upload', need('admin'), async (req, res) => {
+app.post('/api/blob-upload', need(), async (req, res) => {
   try {
     const { handleUpload } = require('@vercel/blob/client');
     const json = await handleUpload({
@@ -242,30 +217,11 @@ app.post('/api/blob-upload', need('admin'), async (req, res) => {
     res.status(400).json({ error: e.message });
   }
 });
-app.post('/api/tracks/register', need('admin'), async (req, res) => {
-  const { url, filename, size } = req.body || {};
-  if (!USE_BLOB || typeof url !== 'string' || !/^https:\/\/[^/]+\.blob\.vercel-storage\.com\//.test(url)) return res.status(400).json({ error: 'Bad upload' });
-  const t = {
-    id: crypto.randomUUID(),
-    title: cleanTitle(String(filename || 'Untitled')),
-    artist: '', tags: '',
-    filename: String(filename || 'track.mp3'),
-    storageKey: url,
-    size: Number(size) || 0,
-    status: 'pending', comment: '',
-    addedAt: new Date().toISOString(), reviewedAt: null,
-  };
-  db.tracks.unshift(t);
-  await saveDb();
-  res.json(publicTrack(t));
-});
-
-// stream (both roles) / download (admin only)
-app.get('/api/tracks/:id/file', need('admin', 'client'), async (req, res) => {
+// stream / download
+app.get('/api/tracks/:id/file', need(), async (req, res) => {
   const t = findTrack(req.params.id);
   if (!t) return res.status(404).end();
   const download = req.query.download === '1';
-  if (download && req.role !== 'admin') return res.status(403).json({ error: 'Only admin can download' });
   const ext = path.extname(t.filename) || '.mp3';
   const filename = (t.title || path.parse(t.filename).name).replace(/[\\/:*?"<>|]/g, '') + ext;
   await storage.serve(res, t.storageKey, { download, filename });
